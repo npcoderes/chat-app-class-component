@@ -1,0 +1,177 @@
+.rs {
+  height: 100vh;
+  width: 100%;
+  background-color: var(--white);
+  border-left: 1px solid var(--gray-light);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.rs::-webkit-scrollbar {
+  width: 6px;
+}
+
+.rs::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+}
+
+/* Profile Section */
+.rs-profile {
+  padding: 32px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-bottom: 1px solid var(--gray-light);
+  background-color: #f8fafc;
+}
+
+.profile-header {
+  position: relative;
+  margin-bottom: 16px;
+}
+
+.profile-avatar {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.online-badge {
+  width: 16px;
+  height: 16px;
+  background-color: var(--success);
+  border-radius: 50%;
+  position: absolute;
+  bottom: 5px;
+  right: 5px;
+  border: 2px solid white;
+}
+
+.profile-name {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0 0 4px 0;
+  color: var(--dark);
+}
+
+.profile-status {
+  font-size: 14px;
+  color: var(--success);
+  margin: 0 0 16px 0;
+  display: flex;
+  align-items: center;
+}
+
+.profile-info {
+  width: 100%;
+  text-align: center;
+  padding-top: 16px;
+  border-top: 1px dashed var(--gray-light);
+}
+
+.profile-email {
+  font-size: 14px;
+  color: var(--gray);
+  margin: 0 0 8px 0;
+}
+
+.profile-bio {
+  font-size: 13px;
+  color: var(--gray-dark);
+  line-height: 1.5;
+  margin: 0;
+  font-style: italic;
+}
+
+/* Actions Section */
+.rs-actions {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+}
+
+.action-button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background-color: transparent;
+  border: none;
+  color: var(--dark);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+  text-decoration: none;
+}
+
+.action-button:hover {
+  background-color: var(--primary-light);
+  color: var(--primary);
+}
+
+.action-button svg {
+  font-size: 18px;
+  opacity: 0.8;
+}
+
+.theme-toggle {
+  position: relative;
+}
+
+.theme-toggle .light-icon,
+.theme-toggle .dark-icon {
+  transition: opacity 0.3s;
+}
+
+.theme-toggle .dark-icon {
+  position: absolute;
+  left: 16px;
+  opacity: 0;
+}
+
+/* For dark mode toggling with CSS variables */
+.dark-theme .theme-toggle .light-icon {
+  opacity: 0;
+}
+
+.dark-theme .theme-toggle .dark-icon {
+  opacity: 1;
+}
+
+.action-button.logout {
+  margin-top: 16px;
+  color: var(--accent);
+}
+
+.action-button.logout:hover {
+  background-color: #fff1f1;
+}
+
+/* Footer */
+.rs-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--gray-light);
+  text-align: center;
+}
+
+.rs-footer p {
+  font-size: 12px;
+  color: var(--gray);
+  margin: 0;
+}
+
+/* Responsive styling */
+@media (max-width: 992px) {
+  .rs {
+    /* display: none; */
+  }
+}

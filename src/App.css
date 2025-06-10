@@ -1,0 +1,74 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --primary: #4a6bff;
+  --primary-light: #eef1ff;
+  --dark: #1a1a2e;
+  --gray-dark: #374151;
+  --gray: #6b7280;
+  --gray-light: #e5e7eb;
+  --white: #ffffff;
+  --accent: #ff6b6b;
+  --success: #10b981;
+  --warning: #f59e0b;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Poppins', sans-serif;
+}
+
+body {
+  background-color: #f5f7fb;
+  color: var(--dark);
+}
+
+.profile-back {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.profile-back p {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  width: 100%;
+}
+
+img.dot {
+  width: 10px !important;
+  height: 10px !important;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+.app-container {
+  display: grid;
+  grid-template-columns: 300px 1fr 280px;
+  height: 100vh;
+  overflow: hidden;
+}
+
+@media (max-width: 768px) {
+  .app-container {
+    grid-template-columns: 1fr;
+  }
+
+  .mobile-hidden {
+    display: none;
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+  .app-container {
+    grid-template-columns: 250px 1fr 250px;
+  }
+}
