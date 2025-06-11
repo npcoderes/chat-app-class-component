@@ -42,38 +42,107 @@ class ChatStore {
     this.unreadMessages = messages;
   }
 
-  setOnlineStatus() {
+  // Improved online status management
+  setOnlineStatus = async () => {
+    if (!this.user?.id) return;
+
+    try {
+      // Update user status to online immediately
+      const userStatusRef = doc(db, "userStatus", this.user.id);
+      await setDoc(userStatusRef, {
+        online: true,
+        lastSeen: new Date(),
+      }, { merge: true });
+
+      // Set up event listeners if not already set
+      if (!this._onlineStatusInitialized) {
+        // Handle page visibility changes
+        document.addEventListener('visibilitychange', this._handleVisibilityChange);
+
+        // Handle beforeunload (when user closes browser)
+        window.addEventListener('beforeunload', this._handleBeforeUnload);
+
+        // Set up periodic pings to maintain online status
+        this._pingInterval = setInterval(() => {
+          if (this.user?.id) {
+            updateDoc(userStatusRef, {
+              lastSeen: new Date(),
+            }).catch(err => console.log("Error updating last seen"));
+          }
+        }, 30000);
+
+        this._onlineStatusInitialized = true;
+      }
+    } catch (error) {
+      console.error("Error setting online status:", error);
+    }
+  }
+
+  // Handle visibility change (tab focus/blur)
+  _handleVisibilityChange = async () => {
     if (!this.user?.id) return;
 
     const userStatusRef = doc(db, "userStatus", this.user.id);
-    setDoc(userStatusRef, {
-      online: true,
-      lastSeen: new Date(),
-    }, { merge: true });
 
-    const handleUnload = () => {
-      updateDoc(userStatusRef, {
+    try {
+      if (document.visibilityState === 'visible') {
+        // User has returned to the tab
+        await updateDoc(userStatusRef, {
+          online: true,
+          lastSeen: new Date()
+        });
+      } else {
+        // User has left the tab
+        await updateDoc(userStatusRef, {
+          online: false,
+          lastSeen: new Date()
+        });
+      }
+    } catch (error) {
+      console.error("Error updating visibility status:", error);
+    }
+  }
+
+  // Handle page close/refresh
+  _handleBeforeUnload = async () => {
+    if (!this.user?.id) return;
+
+    try {
+      const userStatusRef = doc(db, "userStatus", this.user.id);
+      await updateDoc(userStatusRef, {
         online: false,
-        lastSeen: new Date(),
+        lastSeen: new Date()
       });
-    };
+    } catch (error) {
+      console.error("Error updating offline status on unload:", error);
+    }
+  }
 
-    window.addEventListener('beforeunload', handleUnload);
+  // Clean up all listeners and mark user as offline
+  cleanupOnlineStatus = async () => {
+    if (!this.user?.id) return;
 
-    const pingInterval = setInterval(() => {
-      updateDoc(userStatusRef, {
-        lastSeen: new Date(),
-      });
-    }, 30000);
+    try {
+      // Remove event listeners
+      document.removeEventListener('visibilitychange', this._handleVisibilityChange);
+      window.removeEventListener('beforeunload', this._handleBeforeUnload);
 
-    this.cleanupOnlineStatus = () => {
-      window.removeEventListener('beforeunload', handleUnload);
-      clearInterval(pingInterval);
-      updateDoc(userStatusRef, {
+      if (this._pingInterval) {
+        clearInterval(this._pingInterval);
+        this._pingInterval = null;
+      }
+
+      // Update user status to offline
+      const userStatusRef = doc(db, "userStatus", this.user.id);
+      await updateDoc(userStatusRef, {
         online: false,
-        lastSeen: new Date(),
+        lastSeen: new Date()
       });
-    };
+
+      this._onlineStatusInitialized = false;
+    } catch (error) {
+      console.error("Error cleaning up online status:", error);
+    }
   }
 
   async loadUserData(uid) {
@@ -173,6 +242,25 @@ class ChatStore {
 
   cleanup() {
     this.cleanupOnlineStatus?.();
+  }
+
+  // Add this method to your chatStore class
+  logoutCleanup = async () => {
+    // First set user offline
+    await this.cleanupOnlineStatus();
+
+    // Clean up chat listeners
+    this.cleanupChatListener();
+
+    // Reset all state
+    runInAction(() => {
+      this.user = null;
+      this.chatData = [];
+      this.messageId = null;
+      this.messages = [];
+      this.chatUser = null;
+      this.unreadMessages = {};
+    });
   }
 }
 

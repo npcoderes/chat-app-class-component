@@ -359,10 +359,42 @@ export class LeftSidebar extends Component {
 
   }
 
+  // Update the setChat method to handle status monitoring
+
   async setChat(item) {
+    // First set the basic chat info
     chatStore.setChatUser(item);
     chatStore.setMessageId(item.messageId);
     const { user, unreadMessages } = chatStore;
+
+    // For direct chats, ensure we have latest user status
+    if (!item.isGroup && item.rId) {
+      try {
+        // Get the latest user status
+        const userStatusRef = doc(db, "userStatus", item.rId);
+        const statusDoc = await getDoc(userStatusRef);
+
+        if (statusDoc.exists()) {
+          const isOnline = statusDoc.data().online || false;
+          const lastSeen = statusDoc.data().lastSeen;
+
+          // Update the chat user with latest status
+          const updatedItem = {
+            ...item,
+            user: {
+              ...item.user,
+              isOnline,
+              lastSeen: lastSeen ? lastSeen.toDate() : null
+            }
+          };
+
+          // Update the store with the fresh data
+          chatStore.setChatUser(updatedItem);
+        }
+      } catch (error) {
+        console.log("Error getting latest user status:", error);
+      }
+    }
 
     // Mark as read if needed
     if (unreadMessages[item.messageId]) {
@@ -384,10 +416,9 @@ export class LeftSidebar extends Component {
           }
         }
       } catch (error) {
-        // console.error("Error marking messages as read:", error);
+        console.log("Error marking messages as read:", error);
       }
     }
-
   }
   componentDidMount() {
     const tid = toast.loading("Loading chats...");
@@ -421,19 +452,90 @@ export class LeftSidebar extends Component {
 
 
   componentWillUnmount() {
+    // Clean up chat listeners
     this.cleanupChatListener();
+
+    // Clean up any other resources or subscriptions
+    if (this.unsubscribeFromStore) {
+      this.unsubscribeFromStore();
+    }
   }
 
   setupChatListener = (user) => {
     if (!user?.id) return;
-    console.log("Setting up chat listener for user:", user.id);
+
+    // First clean up any existing listener to prevent duplicates
+    this.cleanupChatListener();
+
     const userChatRef = doc(db, "userChats", user.id);
     this.unsubscribeChatListener = onSnapshot(userChatRef, async (snap) => {
       if (snap.exists()) {
         const chatData = snap.data().chatData || [];
-        const groupChats = chatData.filter(chat => chat.isGroup);
+
+        // Process the chat data to ensure we have all user information
+        const processedChatData = await Promise.all(
+          chatData.map(async (chat) => {
+            if (chat.isGroup) return chat;
+
+            // Fetch user data if not already present
+            if (chat.rId) {
+              try {
+                // Get user data
+                const userDoc = await getDoc(doc(db, "users", chat.rId));
+
+                // IMPORTANT: Also fetch user status data
+                const userStatusDoc = await getDoc(doc(db, "userStatus", chat.rId));
+
+                if (userDoc.exists()) {
+                  const userData = userDoc.data();
+
+                  // Add status information
+                  let isOnline = false;
+                  let lastSeen = null;
+
+                  if (userStatusDoc.exists()) {
+                    const statusData = userStatusDoc.data();
+                    isOnline = statusData.online || false;
+                    lastSeen = statusData.lastSeen ? statusData.lastSeen.toDate() : null;
+                  }
+
+                  // Return complete user data with status
+                  return {
+                    ...chat,
+                    user: {
+                      ...userData,
+                      id: chat.rId,
+                      isOnline,
+                      lastSeen
+                    }
+                  };
+                }
+              } catch (error) {
+                console.log("Error fetching user data:", error);
+              }
+            }
+            return chat;
+          })
+        );
+
+        // Sort all chats by updatedAt timestamp before splitting
+        const sortedData = processedChatData.sort((a, b) => {
+          const aTime = a.updatedAt instanceof Date ? a.updatedAt.getTime() : new Date(a.updatedAt).getTime();
+          const bTime = b.updatedAt instanceof Date ? b.updatedAt.getTime() : new Date(b.updatedAt).getTime();
+          return bTime - aTime; // Descending order - newest first
+        });
+
+        // Split the sorted data into direct and group chats
+        const groupChats = sortedData.filter(chat => chat.isGroup);
+        const directChats = sortedData.filter(chat => !chat.isGroup);
+
+        // Update MobX store with the direct chats
+        chatStore.setChatData(directChats);
+
+        // Update local state for group chats
         this.setState({ chatDataGroup: groupChats });
       } else {
+        chatStore.setChatData([]);
         this.setState({ chatDataGroup: [] });
       }
     });
@@ -476,10 +578,26 @@ export class LeftSidebar extends Component {
     }
   }
 
+  // Update formatLastSeen method to handle all edge cases
+
   formatLastSeen(date) {
     if (!date) return "Offline";
-    return formatDistanceToNow(date, { addSuffix: true });
 
+    try {
+      const now = new Date();
+      const diffInSeconds = Math.floor((now - date) / 1000);
+
+      // If less than 1 minute, show "Just now"
+      if (diffInSeconds < 60) {
+        return "Just now";
+      }
+
+      // Use date-fns for consistent formatting
+      return formatDistanceToNow(date, { addSuffix: true });
+    } catch (error) {
+      console.log("Error formatting last seen:", error);
+      return "Offline";
+    }
   }
 
   async handleOpenGroupSettings(group) {
@@ -1152,7 +1270,7 @@ export class LeftSidebar extends Component {
                               alt=""
                               className="object-cover"
                             />
-                            {item.user?.isOnline === true && <span className="online-indicator"></span>}
+                            <div className={`status-indicator ${item.user?.isOnline ? "online" : "offline"}`}></div>
                           </div>
                           <div className="friend-info">
                             <div className="friend-header">
@@ -1277,16 +1395,17 @@ export class LeftSidebar extends Component {
                       <Select
                         mode="multiple"
                         placeholder="Search for users to add"
+                        style={{ width: '100%', marginBottom: 16 }}
                         value={selectedMembers}
                         onChange={(value) => this.setState({ selectedMembers: value })}
-                        onSearch={(value) => this.searchUsers(value)}
+                        onSearch={this.searchUsers}
                         loading={searchingUsers}
                         filterOption={false}
                         notFoundContent={searchingUsers ? <Spin size="small" /> : "No users found"}
-                        style={{ width: '100%' }}
-                        options={userSearchResults}
-                      >
-                      </Select>
+                        options={userSearchResults.filter(
+                          user => !activeGroup.members.includes(user.value)
+                        )}
+                      />
                     </Form.Item>
 
 

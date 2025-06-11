@@ -16,43 +16,57 @@ class Chat extends Component {
     this.state = {
       activeMObileTab: 'chats',
     }
+    // Track previous chatUser to prevent infinite updates
+    this.prevChatUser = null
   }
 
   componentDidUpdate(prevProps, prevState) {
     const { chatUser } = chatStore
-    if (chatUser && window.innerWidth < 768) {
+
+    // Only update if chatUser actually changed and prevent infinite loop
+    if (chatUser !== this.prevChatUser &&
+      chatUser &&
+      window.innerWidth < 768 &&
+      this.state.activeMObileTab !== 'messages') {
       this.setState({ activeMObileTab: 'messages' })
     }
+
+    // Update the previous chatUser reference
+    this.prevChatUser = chatUser
+  }
+
+  // Add method to handle tab changes
+  handleTabChange = (tab) => {
+    this.setState({ activeMObileTab: tab })
   }
 
   render() {
-
     const { activeMObileTab } = this.state
     const { chatUser } = chatStore
-    return (
 
+    return (
       <div className='chat'>
         <div className='mobile-header'>
           <div className='mobile-nav'>
             <div
-              className={`nav-item ${this.state.activeMObileTab === 'chats' ? 'active' : ''}`}
-              onClick={() => this.setState({ activeMObileTab: 'chats' })}
+              className={`nav-item ${activeMObileTab === 'chats' ? 'active' : ''}`}
+              onClick={() => this.handleTabChange('chats')}
             >
               <FaUsers />
               <span>Chats</span>
             </div>
 
             <div
-              className={`nav-item ${this.state.activeMObileTab  === 'messages' ? 'active' : ''}`}
-              onClick={() => this.setState({ activeMObileTab: 'messages' })}
+              className={`nav-item ${activeMObileTab === 'messages' ? 'active' : ''}`}
+              onClick={() => this.handleTabChange('messages')}
             >
               <IoChatbox />
               <span>Messages</span>
             </div>
 
             <div
-              className={`nav-item ${this.state.activeMObileTab  === 'profile' ? 'active' : ''}`}
-              onClick={() => this.setState({ activeMObileTab: 'profile' })}
+              className={`nav-item ${activeMObileTab === 'profile' ? 'active' : ''}`}
+              onClick={() => this.handleTabChange('profile')}
             >
               <CgProfile />
               <span>Profile</span>
@@ -61,16 +75,15 @@ class Chat extends Component {
         </div>
 
         <div className='chat-container'>
-
-          <div className={`sidebar-container ${(this.state.activeMObileTab  === 'chats' || window.innerWidth > 768) ? '' : 'mobile-hidden'}`}>
+          <div className={`sidebar-container ${(activeMObileTab === 'chats' || window.innerWidth > 768) ? '' : 'mobile-hidden'}`}>
             <LeftSidebar />
           </div>
 
-          <div className={`chatbox-container ${(this.state.activeMObileTab  === 'messages' || window.innerWidth > 768) ? '' : 'mobile-hidden'}`}>
+          <div className={`chatbox-container ${(activeMObileTab === 'messages' || window.innerWidth > 768) ? '' : 'mobile-hidden'}`}>
             <ChatBox />
           </div>
 
-          <div className={`profile-container ${(this.state.activeMObileTab  === 'profile' || window.innerWidth > 768) ? '' : 'mobile-hidden'}`}>
+          <div className={`profile-container ${(activeMObileTab === 'profile' || window.innerWidth > 768) ? '' : 'mobile-hidden'}`}>
             <RigthSideBar />
           </div>
         </div>

@@ -10,6 +10,7 @@ import { FaTimes } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import { observer } from 'mobx-react';
 import chatStore from '../../mobexStore/chatStore';
+import { Virtuoso } from 'react-virtuoso';
 
 class ChatBox extends Component {
   constructor(props) {
@@ -25,8 +26,14 @@ class ChatBox extends Component {
     };
 
     this.messagesEndRef = createRef();
+    this.virtuosoRef = createRef();
 
-    // Initialize store value tracking
+   
+    this._isAtBottom = true;
+    this._shouldAutoScroll = true;
+    this._scrollTimeouts = [];
+
+    
     this.prevStoreValues = {
       messageId: null,
       chatUserId: null,
@@ -34,15 +41,24 @@ class ChatBox extends Component {
     };
   }
 
-  // Component lifecycle methods
+ 
   componentDidMount() {
     this.addEnterKeyListener();
+
+    if (chatStore.user?.id) {
+      chatStore.setOnlineStatus();
+    }
+
+    window.addEventListener('resize', this.handleResize);
   }
 
   componentDidUpdate(prevProps, prevState) {
     const { messageId, chatUser, messages, user } = chatStore;
+   
+    if (!prevProps || (!prevProps.chatUser && chatUser)) {
+      setTimeout(this.addEnterKeyListener, 300);
+    }
 
-    // Store previous values to compare
     if (!this.prevStoreValues) {
       this.prevStoreValues = {
         messageId: null,
@@ -51,25 +67,29 @@ class ChatBox extends Component {
       };
     }
 
-    // Check if messageId changed to set up message listeners
     if (messageId !== this.prevStoreValues.messageId && messageId) {
       this.setupMessageListeners();
       this.prevStoreValues.messageId = messageId;
     }
 
-    // Check if chatUser.user.id changed to set up status listeners
     if (chatUser?.user?.id !== this.prevStoreValues.chatUserId && chatUser?.user?.id) {
       this.setupUserStatusListener();
       this.prevStoreValues.chatUserId = chatUser?.user?.id;
     }
 
-    // Auto-scroll when messages change
-    if (messages.length !== this.prevStoreValues.messagesLength && messages.length > 0) {
-      this.scrollToBottom();
+    if (messages.length !== this.prevStoreValues.messagesLength) {
+      if (messages.length > 0) {
+        this._scrollTimeouts.push(
+          setTimeout(() => this.scrollToBottom(true), 200)
+        );
+
+        this._scrollTimeouts.push(
+          setTimeout(() => this.scrollToBottom(true), 500)
+        );
+      }
       this.prevStoreValues.messagesLength = messages.length;
     }
 
-    // Mark messages as read when messages change or messageId changes
     if ((messages.length !== this.prevStoreValues.messagesLength ||
       messageId !== this.prevStoreValues.messageId) &&
       messages.length > 0 && user) {
@@ -78,33 +98,46 @@ class ChatBox extends Component {
   }
 
   componentWillUnmount() {
-    // Clean up all listeners
-    if (this.unsubMessages) this.unsubMessages();
-    if (this.unsubTyping) this.unsubTyping();
-    if (this.unsubStatus) this.unsubStatus();
+    if (this.unsubMessages) {
+      this.unsubMessages();
+      this.unsubMessages = null;
+    }
+
+    if (this.unsubTyping) {
+      this.unsubTyping();
+      this.unsubTyping = null;
+    }
+
+    if (this.unsubStatus) {
+      this.unsubStatus();
+      this.unsubStatus = null;
+    }
+
     this.removeEnterKeyListener();
 
-    // Clear any timers
     if (this.state.typingTimeout) {
       clearTimeout(this.state.typingTimeout);
     }
+
+    if (this._scrollTimeouts && this._scrollTimeouts.length > 0) {
+      this._scrollTimeouts.forEach(timeout => clearTimeout(timeout));
+      this._scrollTimeouts = [];
+    }
+
+    window.removeEventListener('resize', this.handleResize);
   }
 
-  // Set up message listeners
   setupMessageListeners = () => {
     const { messageId } = chatStore;
     const { chatUser } = chatStore;
 
-    // Set loading only if not already loading
     if (!this.state.loading) {
       this.setState({ loading: true });
     }
 
-    // Query messages from subcollection ordered by timestamp
     const chatMessagesRef = collection(db, 'messages', messageId, 'chatMessages');
     const q = query(chatMessagesRef, orderBy('createdAt', 'asc'));
 
-    // Unsubscribe from previous listeners if they exist
     if (this.unsubMessages) this.unsubMessages();
     if (this.unsubTyping) this.unsubTyping();
 
@@ -116,48 +149,119 @@ class ChatBox extends Component {
 
       chatStore.setMessages(messagesData);
       this.setState({ loading: false });
+
+      if (messagesData.length > 0) {
+        this._scrollTimeouts.push(
+          setTimeout(() => this.scrollToBottom(true), 300)
+        );
+      }
     });
 
-    // Get typing indicators from the main document
     this.unsubTyping = onSnapshot(doc(db, 'messages', messageId), (doc) => {
       if (doc.exists() && chatUser?.rId) {
         const typingStatus = doc.data()[`typing_${chatUser.rId}`];
-        // Do something with the typing status if needed
       }
     });
   }
 
-  // Set up user status listener
   setupUserStatusListener = () => {
     const { chatUser } = chatStore;
 
+    if (!chatUser?.user?.id) return;
+
     if (this.unsubStatus) this.unsubStatus();
+
+    this.lastKnownOnlineState = chatUser.user.isOnline;
 
     const userStatusRef = doc(db, "userStatus", chatUser.user.id);
     this.unsubStatus = onSnapshot(userStatusRef, (doc) => {
       if (doc.exists()) {
-        // Create a new object to update with
+        const isOnlineNow = doc.data().online || false;
+
         const updatedUser = {
           ...chatUser,
           user: {
             ...chatUser.user,
-            isOnline: doc.data().online || false,
+            isOnline: isOnlineNow,
             lastSeen: doc.data().lastSeen ? doc.data().lastSeen.toDate() : null
           }
         };
 
-        // Use the store method to update the user
         chatStore.setChatUser(updatedUser);
+
+        if (isOnlineNow && this.lastKnownOnlineState === false) {
+          toast.success(`${chatUser.user.username || "User"} is now online`, {
+            icon: '🟢',
+            duration: 2000,
+            position: 'bottom-left',
+            style: { background: '#f0f9eb', color: '#333' }
+          });
+        }
+
+        this.lastKnownOnlineState = isOnlineNow;
       }
     });
   }
 
-  // Auto-scroll to bottom of messages
-  scrollToBottom = () => {
-    this.messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  scrollToBottom = (force = false) => {
+    const { messages } = chatStore;
+    if (!messages || messages.length === 0) return;
+
+    const attemptScroll = () => {
+      if (this.virtuosoRef.current) {
+        try {
+          this.virtuosoRef.current.scrollToIndex({
+            index: messages.length - 1,
+            behavior: force ? 'auto' : 'smooth',
+            align: 'end'
+          });
+        } catch (err) {
+          console.log("Error with Virtuoso scrollToIndex:", err);
+
+          try {
+            this.virtuosoRef.current.scrollTo({
+              top: 999999,
+              behavior: force ? 'auto' : 'smooth'
+            });
+          } catch (err2) {
+            console.log("Error with Virtuoso scrollTo:", err2);
+          }
+        }
+      }
+
+      if (this.messagesEndRef.current) {
+        try {
+          this.messagesEndRef.current.scrollIntoView({
+            behavior: force ? 'auto' : 'smooth',
+            block: 'end'
+          });
+        } catch (err) {
+          console.log("Error with messagesEndRef.scrollIntoView:", err);
+        }
+      }
+
+      try {
+        const chatContainer = document.querySelector('.chat-messages');
+        if (chatContainer) {
+          chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+      } catch (err) {
+        console.log("Error with manual DOM scroll:", err);
+      }
+    };
+
+    this._scrollTimeouts.forEach(timeout => clearTimeout(timeout));
+    this._scrollTimeouts = [];
+
+    attemptScroll();
+
+    this._scrollTimeouts.push(setTimeout(attemptScroll, 50));
+    this._scrollTimeouts.push(setTimeout(attemptScroll, 150));
+    this._scrollTimeouts.push(setTimeout(attemptScroll, 300));
+    this._scrollTimeouts.push(setTimeout(attemptScroll, 600));
   }
 
-  // Handle typing indicator
+
   handleTyping = (e) => {
     this.setState({ input: e.target.value });
 
@@ -191,20 +295,29 @@ class ChatBox extends Component {
     }
   }
 
-  // Add enter key listener for sending message
+  // Enter key handling
   addEnterKeyListener = () => {
+    // Try to find the input element
     const inputElement = document.getElementById('input');
     if (inputElement) {
-      this.handleKeyPress = (e) => {
-        if (e.key === 'Enter') {
-          this.sendMes();
-        }
-      };
+      console.log("Adding Enter key listener to input element");
+
+      if (!this.handleKeyPress) {
+        this.handleKeyPress = (e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault(); // Prevent default behavior (like form submission)
+            this.sendMes();      // Send the message
+          }
+        };
+      }
+
       inputElement.addEventListener('keydown', this.handleKeyPress);
+    } else {
+      console.log("Input element not found, scheduling retry");
+      setTimeout(this.addEnterKeyListener, 500);
     }
   }
 
-  // Remove enter key listener
   removeEnterKeyListener = () => {
     const inputElement = document.getElementById('input');
     if (inputElement && this.handleKeyPress) {
@@ -212,7 +325,6 @@ class ChatBox extends Component {
     }
   }
 
-  // Send message - Updated to handle both direct and group chats
   sendMes = async () => {
     try {
       const { user, messageId } = chatStore;
@@ -222,18 +334,23 @@ class ChatBox extends Component {
       const msg = input.trim();
       const hasMedia = previewUrl && previewUrl.file;
 
-      // Validate if there's something to send
       if ((!msg && !hasMedia) || !messageId) return;
+
+      this.setState({
+        input: "",
+        previewUrl: null
+      });
+
+      this._shouldAutoScroll = true;
+      this.scrollToBottom(true);
 
       const timestamp = serverTimestamp();
       let fileUrl = null;
       let messageType = "text";
       let lastMessagePreview = "";
 
-      // Handle file upload if present
       if (hasMedia) {
         try {
-          // Upload file to Cloudinary
           const formData = new FormData();
           formData.append('file', previewUrl.file);
           formData.append('upload_preset', import.meta.env.VITE_cloudinary_cloud_prefix);
@@ -252,7 +369,6 @@ class ChatBox extends Component {
             fileUrl = data.secure_url;
             messageType = previewUrl.type;
 
-            // Set appropriate preview text based on file type
             if (previewUrl.type === 'image') {
               lastMessagePreview = "📷 Image";
             } else if (previewUrl.type === 'video') {
@@ -267,16 +383,13 @@ class ChatBox extends Component {
             return;
           }
         } catch (error) {
-          // console.error("Error uploading file:", error);
           toast.error("Error uploading file");
           return;
         }
       } else {
-        // If no media, use the text message for preview
         lastMessagePreview = msg;
       }
 
-      // Create message object based on what we're sending
       const messageData = {
         sId: user.id,
         createdAt: timestamp,
@@ -284,38 +397,31 @@ class ChatBox extends Component {
         type: messageType
       };
 
-      // Add sender info for group chats
       if (chatUser.isGroup) {
         messageData.senderName = user.username;
         messageData.senderProfilePic = user.profilePic;
       }
 
-      // Only add text if there is text to send
       if (msg) {
         messageData.text = msg;
       }
 
-      // Only add fileUrl if there's a file
       if (fileUrl) {
         messageData.fileUrl = fileUrl;
       }
 
-      // Add message to chatMessages subcollection
       await addDoc(collection(db, "messages", messageId, "chatMessages"), messageData);
 
-      // Reset states
-      this.setState({
-        input: "",
-        previewUrl: null
-      });
+      this.scrollToBottom(true);
+      this._scrollTimeouts.push(setTimeout(() => this.scrollToBottom(true), 100));
+      this._scrollTimeouts.push(setTimeout(() => this.scrollToBottom(true), 300));
+      this._scrollTimeouts.push(setTimeout(() => this.scrollToBottom(true), 600));
 
-      // Update last activity timestamp on parent document
       await updateDoc(doc(db, "messages", messageId), {
         lastActivity: timestamp,
         [`typing_${user.id}`]: false
       });
 
-      // Update chat status for all users
       let userIds = [];
       if (chatUser.isGroup) {
         userIds = chatUser.members || [];
@@ -335,7 +441,7 @@ class ChatBox extends Component {
           if (chatIndex !== -1) {
             chatDataClone[chatIndex] = {
               ...chatDataClone[chatIndex],
-              lastMessage: lastMessagePreview.slice(0, 30) + "... " + " ~" + user.username,
+              lastMessage: lastMessagePreview.slice(0, 30) + (lastMessagePreview.length > 30 ? "... " : " ") + "~" + user.username,
               updatedAt: Date.now(),
               messageSeen: id === user.id
             };
@@ -347,19 +453,17 @@ class ChatBox extends Component {
         }
       }
     } catch (error) {
-      // console.error("Error sending message:", error);
       toast.error("Error sending message");
     }
   }
 
-  // Mark messages as read
+
   markMessagesAsRead = async () => {
     const { messageId, messages, user } = chatStore;
 
     if (messageId && messages.length > 0 && user) {
       const unreadMessages = messages.filter(msg => !msg.read && msg.sId !== user.id);
 
-      // Update each unread message document
       for (const msg of unreadMessages) {
         try {
           if (msg.id) {
@@ -367,30 +471,25 @@ class ChatBox extends Component {
             await updateDoc(msgRef, { read: true });
           }
         } catch (error) {
-          // console.error("Error marking message as read:", error);
+          // Silent error handling
         }
       }
     }
   }
 
-  // Handle file selection
   handleFileSelect = async (e, type) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Close file menu
     this.setState({ filemenu: false });
 
-    // Determine the actual file type based on MIME type
     const mimeType = file.type.split('/')[0];
     let fileType = mimeType;
 
-    // Handle special case for application type
     if (mimeType === 'application') {
       fileType = 'file';
     }
 
-    // Create preview URL for the file
     const previewData = {
       type: fileType,
       url: URL.createObjectURL(file),
@@ -401,23 +500,37 @@ class ChatBox extends Component {
     this.setState({ previewUrl: previewData });
   }
 
-  // Handle back button click
   handleBackClick = () => chatStore.setChatUser(null);
 
-  // Format last seen time
   formatLastSeen = (date) => {
     if (!date) return "Offline";
-    return formatDistanceToNow(date, { addSuffix: true });
+
+    try {
+      const now = new Date();
+      const diffInSeconds = Math.floor((now - date) / 1000);
+
+      if (diffInSeconds < 300) {
+        return "Just now";
+      }
+
+      return formatDistanceToNow(date, { addSuffix: true });
+    } catch (error) {
+      return "Offline";
+    }
   }
 
-  // Toggle file menu
   toggleFileMenu = () => {
     this.setState(prevState => ({ filemenu: !prevState.filemenu }));
   }
 
-  // Remove preview
   removePreview = () => {
     this.setState({ previewUrl: null });
+  }
+
+  handleResize = () => {
+    this.forceUpdate();
+
+    setTimeout(() => this.scrollToBottom(), 100);
   }
 
   render() {
@@ -493,117 +606,38 @@ class ChatBox extends Component {
 
         {/* Messages area */}
         <div className="chat-messages">
-          {(() => {
-            let currentDate = null;
-            const messageElements = [];
-
-            messages.forEach((msg, index) => {
-              const isCurrentUser = msg.sId === user?.id;
-
-              // Check if this is a new date
-              const messageDate = msg.createdAt?.toDate ?
-                new Date(msg.createdAt.toDate()).toDateString() :
-                new Date().toDateString();
-
-              if (currentDate !== messageDate) {
-                currentDate = messageDate;
-                messageElements.push(
-                  <div className="date-header" key={`date-${messageDate}`}>
-                    <span>{msg.createdAt?.toDate ?
-                      new Date(msg.createdAt.toDate()).toLocaleDateString() :
-                      new Date().toLocaleDateString()}
-                    </span>
-                  </div>
-                );
+          <Virtuoso
+            ref={this.virtuosoRef}
+            data={messages}
+            itemContent={(index, msg) => (
+              <MessageRow
+                index={index}
+                data={{
+                  messages,
+                  user,
+                  chatUser,
+                  assets,
+                  formatLastSeen: this.formatLastSeen,
+                }}
+              />
+            )}
+            style={{ height: window.innerHeight - 220 }}
+            followOutput="auto"
+            alignToBottom={true}
+            initialTopMostItemIndex={messages.length > 0 ? messages.length - 1 : 0}
+            defaultItemHeight={100}
+            overscan={500}
+            atBottomStateChange={(isAtBottom) => {
+              this._isAtBottom = isAtBottom;
+              if (isAtBottom) {
+                this._shouldAutoScroll = true;
               }
-
-              // Handle system messages differently from regular messages
-              if (msg.system) {
-                messageElements.push(
-                  <div className="system-message-container" key={`msg-${msg.id || index}`}>
-                    <div className="system-message">
-                      <p>{msg.text}</p>
-                    </div>
-                  </div>
-                );
-              } else {
-                // Regular message (sent or received)
-                messageElements.push(
-                  <div className={isCurrentUser ? "s-msg" : "r-msg"} key={`msg-${msg.id || index}`}>
-                    {/* Show sender name for group messages */}
-                    {chatUser.isGroup && !isCurrentUser && (
-                      <div className="message-sender-name">
-                        <span>{msg.senderName || "Unknown User"}</span>
-                      </div>
-                    )}
-
-                    {/* Image Message */}
-                    {msg.type === 'image' && msg.fileUrl && (
-                      <div className="msg img-msg">
-                        <img
-                          src={msg.fileUrl}
-                          alt="Image"
-                          onClick={() => window.open(msg.fileUrl, '_blank')}
-                        />
-                      </div>
-                    )}
-
-                    {/* Video Message */}
-                    {msg.type === 'video' && msg.fileUrl && (
-                      <div className="msg video-msg">
-                        <video src={msg.fileUrl} controls></video>
-                      </div>
-                    )}
-
-                    {/* Audio Message */}
-                    {msg.type === 'audio' && msg.fileUrl && (
-                      <div className="msg audio-msg">
-                        <audio src={msg.fileUrl} controls></audio>
-                      </div>
-                    )}
-
-                    {/* File Message */}
-                    {msg.fileUrl && !['image', 'video', 'audio'].includes(msg.type) && (
-                      <div className="msg file-msg">
-                        <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer">
-                          <FaFile /> Download File
-                        </a>
-                      </div>
-                    )}
-
-                    {/* Text Message */}
-                    {msg.text && <p className='msg'>{msg.text}</p>}
-
-                    {/* Message Footer */}
-                    <div>
-                      <img
-                        src={isCurrentUser
-                          ? (user?.profilePic || assets.profile_img)
-                          : (chatUser.isGroup
-                            ? (msg.senderProfilePic || assets.profile_img)
-                            : (chatUser.user?.profilePic || assets.profile_img))}
-                        alt=""
-                      />
-                      <p className='time'>
-                        {msg.createdAt?.toDate ?
-                          msg.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) :
-                          new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                        }
-                        {isCurrentUser && (
-                          <span className={`read-status ${msg.read ? 'read' : 'unread'}`}>
-                            {msg.read ? '✓✓' : '✓'}
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                );
-              }
-            });
-
-            return messageElements;
-          })()}
-
+            }}
+            stick
+            components={{
+              Footer: () => <div ref={this.messagesEndRef} style={{ height: 20 }} />
+            }}
+          />
           {/* Typing indicator */}
           {chatUser?.typing && (
             <div className="typing-indicator r-msg">
@@ -614,45 +648,42 @@ class ChatBox extends Component {
               </div>
             </div>
           )}
-          <div ref={this.messagesEndRef} />
         </div>
 
         {/* Input area */}
         <div className="chat-input">
-          {
-            previewUrl && (
-              <div className="preview-container">
-                <div className="preview-content">
-                  {previewUrl.type === 'image' && (
-                    <img src={previewUrl.url} alt="Preview" className="preview-image" />
-                  )}
+          {previewUrl && (
+            <div className="preview-container">
+              <div className="preview-content">
+                {previewUrl.type === 'image' && (
+                  <img src={previewUrl.url} alt="Preview" className="preview-image" />
+                )}
 
-                  {previewUrl.type === 'video' && (
-                    <video src={previewUrl.url} controls className="video-preview">
-                      Your browser does not support video playback.
-                    </video>
-                  )}
+                {previewUrl.type === 'video' && (
+                  <video src={previewUrl.url} controls className="video-preview">
+                    Your browser does not support video playback.
+                  </video>
+                )}
 
-                  {previewUrl.type === 'audio' && (
-                    <audio src={previewUrl.url} controls className="preview-audio">
-                      Your browser does not support audio playback.
-                    </audio>
-                  )}
+                {previewUrl.type === 'audio' && (
+                  <audio src={previewUrl.url} controls className="preview-audio">
+                    Your browser does not support audio playback.
+                  </audio>
+                )}
 
-                  {previewUrl.type === 'file' && (
-                    <div className="preview-file">
-                      <FaFile style={{ marginRight: '8px', color: 'var(--primary)' }} />
-                      {previewUrl.file.name}
-                    </div>
-                  )}
+                {previewUrl.type === 'file' && (
+                  <div className="preview-file">
+                    <FaFile style={{ marginRight: '8px', color: 'var(--primary)' }} />
+                    {previewUrl.file.name}
+                  </div>
+                )}
 
-                  <button className="remove-preview" onClick={this.removePreview}>
-                    <FaTimes /> Remove
-                  </button>
-                </div>
+                <button className="remove-preview" onClick={this.removePreview}>
+                  <FaTimes /> Remove
+                </button>
               </div>
-            )
-          }
+            </div>
+          )}
 
           <div className='relative'>
             <ImAttachment
@@ -690,6 +721,12 @@ class ChatBox extends Component {
             onChange={this.handleTyping}
             value={input}
             id='input'
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                this.sendMes();
+              }
+            }}
           />
           <img
             src={assets.send_button}
@@ -702,5 +739,115 @@ class ChatBox extends Component {
     );
   }
 }
+
+// MessageRow component remains the same
+const MessageRow = ({ index, data }) => {
+  const { messages, user, chatUser, assets } = data;
+  const msg = messages[index];
+  const isCurrentUser = msg.sId === user?.id;
+  const messageClass = isCurrentUser ? 'sender' : 'receiver';
+
+  // Date header logic 
+  let showDateHeader = false;
+  if (index === 0) showDateHeader = true;
+  else {
+    const prevMsg = messages[index - 1];
+    const prevDate = prevMsg.createdAt?.toDate
+      ? new Date(prevMsg.createdAt.toDate()).toDateString()
+      : new Date().toDateString();
+    const currDate = msg.createdAt?.toDate
+      ? new Date(msg.createdAt.toDate()).toDateString()
+      : new Date().toDateString();
+    if (prevDate !== currDate) showDateHeader = true;
+  }
+
+  return (
+    <div className="message-row">
+      {showDateHeader && (
+        <div className="date-header">
+          <span>
+            {msg.createdAt?.toDate
+              ? new Date(msg.createdAt.toDate()).toLocaleDateString()
+              : new Date().toLocaleDateString()}
+          </span>
+        </div>
+      )}
+
+      {msg.system ? (
+        <div className="system-message-container">
+          <div className="system-message">
+            <p>{msg.text}</p>
+          </div>
+        </div>
+      ) : (
+        <div className={`message-container ${isCurrentUser ? 'sender-container' : 'receiver-container'}`}>
+          <div className={`message-bubble ${isCurrentUser ? 'sender-bubble' : ''} ${messageClass}`}>
+            <div className="message-content">
+              {chatUser.isGroup && !isCurrentUser && (
+                <div className="message-sender-name">
+                  <span>{msg.senderName || "Unknown User"}</span>
+                </div>
+              )}
+
+              {msg.type === 'image' && msg.fileUrl && (
+                <div className="img-msg">
+                  <img
+                    src={msg.fileUrl}
+                    alt="Image"
+                    onClick={() => window.open(msg.fileUrl, '_blank')}
+                  />
+                </div>
+              )}
+
+              {msg.type === 'video' && msg.fileUrl && (
+                <div className="video-msg">
+                  <video src={msg.fileUrl} controls></video>
+                </div>
+              )}
+
+              {msg.type === 'audio' && msg.fileUrl && (
+                <div className="audio-msg">
+                  <audio src={msg.fileUrl} controls></audio>
+                </div>
+              )}
+
+              {msg.fileUrl && !['image', 'video', 'audio'].includes(msg.type) && (
+                <div className="file-msg">
+                  <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer">
+                    <FaFile /> Download File
+                  </a>
+                </div>
+              )}
+
+              {msg.text && <p>{msg.text}</p>}
+            </div>
+
+            <img
+              className="message-avatar"
+              src={isCurrentUser
+                ? (user?.profilePic || assets.profile_img)
+                : (chatUser.isGroup
+                  ? (msg.senderProfilePic || assets.profile_img)
+                  : (chatUser.user?.profilePic || assets.profile_img))}
+              alt=""
+            />
+          </div>
+
+          <div className={`message-time ${messageClass}`}>
+            {msg.createdAt?.toDate
+              ? msg.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            }
+            {isCurrentUser && (
+              <span className={`read-status ${msg.read ? 'read' : 'unread'}`}>
+                {msg.read ? '✓✓' : '✓'}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 export default observer(ChatBox);
