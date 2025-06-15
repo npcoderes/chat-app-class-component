@@ -2,7 +2,7 @@ import React, { Component } from 'react'
 import { observer } from 'mobx-react'
 import chatStore from '../../mobexStore/chatStore'
 import { doc, updateDoc } from 'firebase/firestore';
-import './profileupdate.css'
+import './profileUpdate.css'
 import { Link } from 'react-router-dom'
 import { IoMdArrowBack, IoMdCamera } from 'react-icons/io'
 import toast from 'react-hot-toast'

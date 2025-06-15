@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import "./LeftSidebar.css";
+import   './LeftSideBar.css';
 import assets from '../../assets/assets';
 import { db, LogOutUser } from '../../config/firebase';
 import { Link } from 'react-router-dom';
