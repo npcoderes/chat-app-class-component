@@ -278,7 +278,8 @@ class ChatBox extends Component {
     }, 2000);
 
     this.setState({ typingTimeout: timeout });
-  }
+  } 
+  
 
   updateUserTypingStatus = async (isTyping) => {
     const { messageId } = chatStore;
