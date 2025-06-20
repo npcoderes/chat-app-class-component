@@ -1,16 +1,60 @@
-import React, { Component } from 'react'
-import   './LeftSideBar.css';
-import assets from '../../assets/assets';
-import { db, LogOutUser } from '../../config/firebase';
-import { Link } from 'react-router-dom';
-import { collection, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where, arrayUnion, addDoc, onSnapshot } from 'firebase/firestore';
-import toast from 'react-hot-toast';
-import { IoMdMenu } from 'react-icons/io';
-import { formatDistanceToNow, set } from 'date-fns';
-import { Button, Modal, Input, Form, Upload, Avatar, Select, Spin, Tabs, List, Tag, Popconfirm } from 'antd';
-import { PlusOutlined, UserOutlined, SettingOutlined, EditOutlined, UserAddOutlined, DeleteOutlined, TeamOutlined } from '@ant-design/icons';
-import chatStore from '../../mobexStore/chatStore';
-import { observer } from 'mobx-react';
+import React, { Component } from "react";
+import "./LeftSideBar.css";
+import assets from "../../assets/assets";
+import { db, LogOutUser } from "../../config/firebase";
+import { Link } from "react-router-dom";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+  where,
+  arrayUnion,
+  addDoc,
+  onSnapshot,
+} from "firebase/firestore";
+import toast from "react-hot-toast";
+import { IoMdMenu } from "react-icons/io";
+import { formatDistanceToNow, set } from "date-fns";
+import {
+  Button,
+  Modal,
+  Input,
+  Form,
+  Upload,
+  Avatar,
+  Select,
+  Spin,
+  Tabs,
+  List,
+  Tag,
+  Popconfirm,
+} from "antd";
+import {
+  PlusOutlined,
+  UserOutlined,
+  SettingOutlined,
+  EditOutlined,
+  UserAddOutlined,
+  DeleteOutlined,
+  TeamOutlined,
+} from "@ant-design/icons";
+import chatStore from "../../mobexStore/chatStore";
+import { observer } from "mobx-react";
+
+function debounce(func, delay) {
+  let timeoutId;
+  return function (...args) {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => {
+      func.apply(this, args);
+    }, delay);
+  };
+}
 
 export class LeftSidebar extends Component {
   constructor(props) {
@@ -50,19 +94,16 @@ export class LeftSidebar extends Component {
     this.createGroup = this.createGroup.bind(this);
     this.handleOpenGroupSettings = this.handleOpenGroupSettings.bind(this);
     this.handleUpdateGroup = this.handleUpdateGroup.bind(this);
-    this.searchUsers = this.searchUsers.bind(this);
+    this.debouncedSearchUsers = debounce(this.searchUsers.bind(this), 500);
     this.addMembersToGroup = this.addMembersToGroup.bind(this);
-
-
   }
 
   handleImageChange(info) {
     this.setState({
       groupImage: info.file,
-      imageUrl: URL.createObjectURL(info.file)
-    })
+      imageUrl: URL.createObjectURL(info.file),
+    });
   }
-
 
   handleModalClose = () => {
     if (this.formRef.current) {
@@ -93,9 +134,10 @@ export class LeftSidebar extends Component {
     });
     try {
       const usersRef = collection(db, "users");
-      const userQuery = query(usersRef,
+      const userQuery = query(
+        usersRef,
         where("username", ">=", value.toLowerCase()),
-        where("username", "<=", value.toLowerCase() + '\uf8ff')
+        where("username", "<=", value.toLowerCase() + "\uf8ff")
       );
 
       const querySnapshot = await getDocs(userQuery);
@@ -109,15 +151,15 @@ export class LeftSidebar extends Component {
             label: doc.data().username,
             data: {
               id: doc.id,
-              ...doc.data()
-            }
+              ...doc.data(),
+            },
           });
         }
       });
 
       this.setState({
         userSearchResults: results,
-      })
+      });
     } catch (error) {
       // console.error("Error searching users:", error);
       toast.error("Error searching users");
@@ -146,14 +188,19 @@ export class LeftSidebar extends Component {
       let groupImageUrl = null;
       if (this.state.groupImage) {
         const formData = new FormData();
-        formData.append('file', groupImage);
-        formData.append('upload_preset', import.meta.env.VITE_cloudinary_cloud_prefix);
+        formData.append("file", groupImage);
+        formData.append(
+          "upload_preset",
+          import.meta.env.VITE_cloudinary_cloud_prefix
+        );
 
         const response = await fetch(
-          `https://api.cloudinary.com/v1_1/${import.meta.env.VITE_cloudinary_cloud_name}/upload`,
+          `https://api.cloudinary.com/v1_1/${
+            import.meta.env.VITE_cloudinary_cloud_name
+          }/upload`,
           {
-            method: 'POST',
-            body: formData
+            method: "POST",
+            body: formData,
           }
         );
 
@@ -177,14 +224,14 @@ export class LeftSidebar extends Component {
         groupImage: groupImageUrl,
         createdBy: user.id,
         members: [user.id, ...selectedMembers],
-        admins: [user.id]
+        admins: [user.id],
       });
 
       // Add initial system message
       await addDoc(collection(db, "messages", messageId, "chatMessages"), {
         system: true,
         text: `${user.username} created the group "${groupName}"`,
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp(),
       });
 
       // Add group to creator's chat list
@@ -196,7 +243,7 @@ export class LeftSidebar extends Component {
         members: [user.id, ...selectedMembers],
         lastMessage: "Group created",
         updatedAt: Date.now(),
-        messageSeen: true
+        messageSeen: true,
       });
 
       // Add group to each member's chat list
@@ -210,14 +257,12 @@ export class LeftSidebar extends Component {
           lastMessage: `${user.username} added you to the group`,
           updatedAt: Date.now(),
           messageSeen: false,
-
         });
       }
 
       toast.dismiss(loadingToast);
       toast.success("Group created successfully");
       this.handleModalClose();
-
     } catch (error) {
       console.error("Error creating group:", error);
       toast.dismiss(loadingToast);
@@ -232,12 +277,12 @@ export class LeftSidebar extends Component {
     if (userChatDoc.exists()) {
       // Add to existing chatData array
       await updateDoc(userChatRef, {
-        chatData: arrayUnion(groupChatData)
+        chatData: arrayUnion(groupChatData),
       });
     } else {
       // Create new chatData array
       await setDoc(userChatRef, {
-        chatData: [groupChatData]
+        chatData: [groupChatData],
       });
     }
   }
@@ -253,7 +298,7 @@ export class LeftSidebar extends Component {
         searchUser: null,
         search: false,
         searchLoading: false,
-        noUserFound: false
+        noUserFound: false,
       });
       return;
     }
@@ -261,7 +306,10 @@ export class LeftSidebar extends Component {
     this.setState({ searchLoading: true, search: true });
     try {
       const userRef = collection(db, "users");
-      const q = query(userRef, where("username", "==", value.trim().toLowerCase()));
+      const q = query(
+        userRef,
+        where("username", "==", value.trim().toLowerCase())
+      );
       const result = await getDocs(q);
 
       if (result.empty) {
@@ -275,11 +323,13 @@ export class LeftSidebar extends Component {
         foundUser.id = result.docs[0].id;
 
         // Check if user is already in a chat using the MobX store's chatData
-        const alreadyInChat = chatData.some(item => item.rId === foundUser.id);
+        const alreadyInChat = chatData.some(
+          (item) => item.rId === foundUser.id
+        );
         this.setState({
           searchUser: alreadyInChat ? null : foundUser,
-          noUserFound: alreadyInChat
-        })
+          noUserFound: alreadyInChat,
+        });
       }
     } catch (error) {
       console.error("Search error:", error);
@@ -293,15 +343,17 @@ export class LeftSidebar extends Component {
   }
 
   async addChat(ruser) {
-    const { user } = chatStore
+    const { user } = chatStore;
     const tid = toast.loading("Adding chat...");
 
     try {
       // Check if chat exists
       const existingChatDoc = await getDoc(doc(db, "userChats", user.id));
-      const existingChats = existingChatDoc.exists() ? existingChatDoc.data().chatData || [] : [];
+      const existingChats = existingChatDoc.exists()
+        ? existingChatDoc.data().chatData || []
+        : [];
 
-      if (existingChats.some(chat => chat.rId === ruser.id)) {
+      if (existingChats.some((chat) => chat.rId === ruser.id)) {
         toast.dismiss(tid);
         return;
       }
@@ -315,7 +367,9 @@ export class LeftSidebar extends Component {
 
       // Add chat for recipient
       const recipientDoc = await getDoc(doc(db, "userChats", ruser.id));
-      const recipientChats = recipientDoc.exists() ? recipientDoc.data().chatData || [] : [];
+      const recipientChats = recipientDoc.exists()
+        ? recipientDoc.data().chatData || []
+        : [];
       await setDoc(doc(db, "userChats", ruser.id), {
         chatData: [
           ...recipientChats,
@@ -325,8 +379,8 @@ export class LeftSidebar extends Component {
             lastMessage: "",
             updatedAt: Date.now(),
             messageSeen: true,
-          }
-        ]
+          },
+        ],
       });
 
       // Add chat for current user
@@ -339,8 +393,8 @@ export class LeftSidebar extends Component {
             lastMessage: "",
             updatedAt: Date.now(),
             messageSeen: true,
-          }
-        ]
+          },
+        ],
       });
 
       this.setState({
@@ -348,7 +402,7 @@ export class LeftSidebar extends Component {
         searchQuery: "",
         search: false,
         noUserFound: false,
-      })
+      });
       toast.dismiss(tid);
       toast.success("Chat added successfully");
     } catch (error) {
@@ -356,7 +410,6 @@ export class LeftSidebar extends Component {
       toast.error("Error adding chat");
       console.error("Error adding chat:", error);
     }
-
   }
 
   // Update the setChat method to handle status monitoring
@@ -384,8 +437,8 @@ export class LeftSidebar extends Component {
             user: {
               ...item.user,
               isOnline,
-              lastSeen: lastSeen ? lastSeen.toDate() : null
-            }
+              lastSeen: lastSeen ? lastSeen.toDate() : null,
+            },
           };
 
           // Update the store with the fresh data
@@ -406,12 +459,14 @@ export class LeftSidebar extends Component {
           const userChatData = userSnap.data();
           const chatDataClone = [...userChatData.chatData];
 
-          const chatIndex = chatDataClone.findIndex(c => c.messageId === item.messageId);
+          const chatIndex = chatDataClone.findIndex(
+            (c) => c.messageId === item.messageId
+          );
           if (chatIndex !== -1) {
             chatDataClone[chatIndex].messageSeen = true;
 
             await updateDoc(userChatRef, {
-              chatData: chatDataClone
+              chatData: chatDataClone,
             });
           }
         }
@@ -435,8 +490,6 @@ export class LeftSidebar extends Component {
     }
   }
 
-
-
   componentDidUpdate(prevProps, prevState) {
     const prevUserId = prevState.user?.id;
     const currentUserId = chatStore.user?.id;
@@ -449,7 +502,6 @@ export class LeftSidebar extends Component {
       });
     }
   }
-
 
   componentWillUnmount() {
     // Clean up chat listeners
@@ -484,7 +536,9 @@ export class LeftSidebar extends Component {
                 const userDoc = await getDoc(doc(db, "users", chat.rId));
 
                 // IMPORTANT: Also fetch user status data
-                const userStatusDoc = await getDoc(doc(db, "userStatus", chat.rId));
+                const userStatusDoc = await getDoc(
+                  doc(db, "userStatus", chat.rId)
+                );
 
                 if (userDoc.exists()) {
                   const userData = userDoc.data();
@@ -496,7 +550,9 @@ export class LeftSidebar extends Component {
                   if (userStatusDoc.exists()) {
                     const statusData = userStatusDoc.data();
                     isOnline = statusData.online || false;
-                    lastSeen = statusData.lastSeen ? statusData.lastSeen.toDate() : null;
+                    lastSeen = statusData.lastSeen
+                      ? statusData.lastSeen.toDate()
+                      : null;
                   }
 
                   // Return complete user data with status
@@ -506,8 +562,8 @@ export class LeftSidebar extends Component {
                       ...userData,
                       id: chat.rId,
                       isOnline,
-                      lastSeen
-                    }
+                      lastSeen,
+                    },
                   };
                 }
               } catch (error) {
@@ -520,14 +576,20 @@ export class LeftSidebar extends Component {
 
         // Sort all chats by updatedAt timestamp before splitting
         const sortedData = processedChatData.sort((a, b) => {
-          const aTime = a.updatedAt instanceof Date ? a.updatedAt.getTime() : new Date(a.updatedAt).getTime();
-          const bTime = b.updatedAt instanceof Date ? b.updatedAt.getTime() : new Date(b.updatedAt).getTime();
+          const aTime =
+            a.updatedAt instanceof Date
+              ? a.updatedAt.getTime()
+              : new Date(a.updatedAt).getTime();
+          const bTime =
+            b.updatedAt instanceof Date
+              ? b.updatedAt.getTime()
+              : new Date(b.updatedAt).getTime();
           return bTime - aTime; // Descending order - newest first
         });
 
         // Split the sorted data into direct and group chats
-        const groupChats = sortedData.filter(chat => chat.isGroup);
-        const directChats = sortedData.filter(chat => !chat.isGroup);
+        const groupChats = sortedData.filter((chat) => chat.isGroup);
+        const directChats = sortedData.filter((chat) => !chat.isGroup);
 
         // Update MobX store with the direct chats
         chatStore.setChatData(directChats);
@@ -550,7 +612,7 @@ export class LeftSidebar extends Component {
 
   isGroupAdmin = (group) => {
     return group?.admins?.includes(this.state.user.id);
-  }
+  };
 
   async fetchGroupMembers(memberIds) {
     if (!memberIds?.length) return;
@@ -563,7 +625,7 @@ export class LeftSidebar extends Component {
           if (userDoc.exists()) {
             return {
               id,
-              ...userDoc.data()
+              ...userDoc.data(),
             };
           }
           return { id, username: "Unknown User" };
@@ -604,7 +666,7 @@ export class LeftSidebar extends Component {
     this.setState({
       activeGroup: group,
       groupSettingsVisible: true,
-    })
+    });
 
     // Fetch complete group data
     try {
@@ -612,7 +674,7 @@ export class LeftSidebar extends Component {
       if (groupDoc.exists()) {
         const fullGroupData = {
           ...group,
-          ...groupDoc.data()
+          ...groupDoc.data(),
         };
         this.setState({ activeGroup: fullGroupData });
 
@@ -620,10 +682,9 @@ export class LeftSidebar extends Component {
         if (this.groupEditFormRef.current) {
           this.groupEditFormRef.current.setFieldsValue({
             groupName: fullGroupData.groupName,
-            groupDescription: fullGroupData.groupDescription || ''
+            groupDescription: fullGroupData.groupDescription || "",
           });
         }
-
 
         // Fetch members data
         if (fullGroupData.members) {
@@ -634,10 +695,9 @@ export class LeftSidebar extends Component {
       console.error("Error fetching group details:", error);
       toast.error("Failed to load group details");
     }
-  };
+  }
 
   async handleUpdateGroup(values) {
-
     if (!this.state.activeGroup?.messageId) return;
 
     const { groupName, groupDescription } = values;
@@ -647,16 +707,24 @@ export class LeftSidebar extends Component {
     try {
       // Upload new image if provided
       let groupImageUrl = activeGroup.groupImage;
-      if (this.state.groupImage && this.state.groupImage !== activeGroup.groupImage) {
+      if (
+        this.state.groupImage &&
+        this.state.groupImage !== activeGroup.groupImage
+      ) {
         const formData = new FormData();
-        formData.append('file', groupImage);
-        formData.append('upload_preset', import.meta.env.VITE_cloudinary_cloud_prefix);
+        formData.append("file", groupImage);
+        formData.append(
+          "upload_preset",
+          import.meta.env.VITE_cloudinary_cloud_prefix
+        );
 
         const response = await fetch(
-          `https://api.cloudinary.com/v1_1/${import.meta.env.VITE_cloudinary_cloud_name}/upload`,
+          `https://api.cloudinary.com/v1_1/${
+            import.meta.env.VITE_cloudinary_cloud_name
+          }/upload`,
           {
-            method: 'POST',
-            body: formData
+            method: "POST",
+            body: formData,
           }
         );
 
@@ -670,16 +738,21 @@ export class LeftSidebar extends Component {
       let updatedMembers = [...activeGroup.members];
       if (selectedMembers.length > 0) {
         // Filter out any already existing members
-        const newMembers = selectedMembers.filter(id => !updatedMembers.includes(id));
+        const newMembers = selectedMembers.filter(
+          (id) => !updatedMembers.includes(id)
+        );
         updatedMembers = [...updatedMembers, ...newMembers];
 
         // Add system message for new members
         if (newMembers.length > 0) {
-          await addDoc(collection(db, "messages", activeGroup.messageId, "chatMessages"), {
-            system: true,
-            text: `${user.username} added ${newMembers.length} new members to the group`,
-            createdAt: serverTimestamp()
-          });
+          await addDoc(
+            collection(db, "messages", activeGroup.messageId, "chatMessages"),
+            {
+              system: true,
+              text: `${user.username} added ${newMembers.length} new members to the group`,
+              createdAt: serverTimestamp(),
+            }
+          );
 
           // Add group to new members' chat lists
           for (const memberId of newMembers) {
@@ -691,7 +764,7 @@ export class LeftSidebar extends Component {
               members: updatedMembers,
               lastMessage: `${user.username} added you to the group`,
               updatedAt: Date.now(),
-              messageSeen: false
+              messageSeen: false,
             });
           }
         }
@@ -703,7 +776,7 @@ export class LeftSidebar extends Component {
         groupDescription,
         groupImage: groupImageUrl,
         members: updatedMembers,
-        updatedAt: serverTimestamp()
+        updatedAt: serverTimestamp(),
       });
 
       // Update all members' chat lists with new group info
@@ -715,7 +788,9 @@ export class LeftSidebar extends Component {
           const userChatData = userSnap.data();
           const chatDataClone = [...userChatData.chatData];
 
-          const chatIndex = chatDataClone.findIndex(c => c.messageId === activeGroup.messageId);
+          const chatIndex = chatDataClone.findIndex(
+            (c) => c.messageId === activeGroup.messageId
+          );
           if (chatIndex !== -1) {
             chatDataClone[chatIndex] = {
               ...chatDataClone[chatIndex],
@@ -724,11 +799,11 @@ export class LeftSidebar extends Component {
               members: updatedMembers,
               lastMessage: `${user.username} updated the group information`,
               updatedAt: Date.now(),
-              messageSeen: memberId === user.id
+              messageSeen: memberId === user.id,
             };
 
             await updateDoc(userChatRef, {
-              chatData: chatDataClone
+              chatData: chatDataClone,
             });
           }
         }
@@ -744,33 +819,28 @@ export class LeftSidebar extends Component {
           groupName,
           groupDescription,
           groupImage: groupImageUrl,
-          members: updatedMembers
-        }
-      })
-
+          members: updatedMembers,
+        },
+      });
 
       // Reset UI states
       this.setState({
         selectedMembers: [],
         groupEditMode: false,
-      })
+      });
 
       // Refetch members data if new members were added
       if (selectedMembers.length > 0) {
         this.fetchGroupMembers(updatedMembers);
       }
-
     } catch (error) {
       // console.error("Error updating group:", error);
       toast.dismiss(loadingToast);
       toast.error("Failed to update group");
     }
-
-
   }
 
   async removeMemberFromGroup(memberId) {
-
     if (!this.state.activeGroup?.messageId) return;
     const { activeGroup, user } = this.state;
 
@@ -778,25 +848,32 @@ export class LeftSidebar extends Component {
 
     try {
       // Get the member being removed
-      const memberToRemove = this.state.groupMembers.find(m => m.id === memberId);
+      const memberToRemove = this.state.groupMembers.find(
+        (m) => m.id === memberId
+      );
       const memberName = memberToRemove?.username || "Unknown User";
 
       // Update the members list in the group document
-      const updatedMembers = activeGroup.members.filter(id => id !== memberId);
+      const updatedMembers = activeGroup.members.filter(
+        (id) => id !== memberId
+      );
       // Also remove from admins list if they were an admin
-      const updatedAdmins = activeGroup.admins.filter(id => id !== memberId);
+      const updatedAdmins = activeGroup.admins.filter((id) => id !== memberId);
 
       await updateDoc(doc(db, "messages", activeGroup.messageId), {
         members: updatedMembers,
-        admins: updatedAdmins
+        admins: updatedAdmins,
       });
 
       // Add system message about member removal
-      await addDoc(collection(db, "messages", activeGroup.messageId, "chatMessages"), {
-        system: true,
-        text: `${user.username} removed ${memberName} from the group`,
-        createdAt: serverTimestamp()
-      });
+      await addDoc(
+        collection(db, "messages", activeGroup.messageId, "chatMessages"),
+        {
+          system: true,
+          text: `${user.username} removed ${memberName} from the group`,
+          createdAt: serverTimestamp(),
+        }
+      );
 
       // Remove the group from the removed member's chat list
       const memberChatRef = doc(db, "userChats", memberId);
@@ -805,11 +882,11 @@ export class LeftSidebar extends Component {
       if (memberSnap.exists()) {
         const memberChatData = memberSnap.data();
         const updatedChatData = memberChatData.chatData.filter(
-          chat => chat.messageId !== activeGroup.messageId
+          (chat) => chat.messageId !== activeGroup.messageId
         );
 
         await updateDoc(memberChatRef, {
-          chatData: updatedChatData
+          chatData: updatedChatData,
         });
       }
 
@@ -822,18 +899,20 @@ export class LeftSidebar extends Component {
           const userChatData = userSnap.data();
           const chatDataClone = [...userChatData.chatData];
 
-          const chatIndex = chatDataClone.findIndex(c => c.messageId === activeGroup.messageId);
+          const chatIndex = chatDataClone.findIndex(
+            (c) => c.messageId === activeGroup.messageId
+          );
           if (chatIndex !== -1) {
             chatDataClone[chatIndex] = {
               ...chatDataClone[chatIndex],
               members: updatedMembers,
               lastMessage: `${user.username} removed ${memberName} from the group`,
               updatedAt: Date.now(),
-              messageSeen: id === user.id
+              messageSeen: id === user.id,
             };
 
             await updateDoc(userChatRef, {
-              chatData: chatDataClone
+              chatData: chatDataClone,
             });
           }
         }
@@ -846,25 +925,22 @@ export class LeftSidebar extends Component {
         activeGroup: {
           ...this.state.activeGroup,
           members: updatedMembers,
-          admins: updatedAdmins
-        }
-      })
+          admins: updatedAdmins,
+        },
+      });
       // Update members list
 
       this.setState({
-        groupMembers: this.state.groupMembers.filter(m => m.id !== memberId),
-      })
-
+        groupMembers: this.state.groupMembers.filter((m) => m.id !== memberId),
+      });
     } catch (error) {
       console.error("Error removing member:", error);
       toast.dismiss(loadingToast);
       toast.error("Failed to remove member");
     }
-
   }
 
   async addMembersToGroup() {
-
     const { activeGroup, user, selectedMembers } = this.state;
     if (!activeGroup?.messageId || !selectedMembers.length) return;
 
@@ -876,19 +952,24 @@ export class LeftSidebar extends Component {
 
       // Update the group document with new members
       await updateDoc(doc(db, "messages", activeGroup.messageId), {
-        members: updatedMembers
+        members: updatedMembers,
       });
 
       // Add system messages for each new member
       for (const memberId of selectedMembers) {
         const memberDoc = await getDoc(doc(db, "users", memberId));
-        const memberName = memberDoc.exists() ? memberDoc.data().username : "Unknown User";
+        const memberName = memberDoc.exists()
+          ? memberDoc.data().username
+          : "Unknown User";
 
-        await addDoc(collection(db, "messages", activeGroup.messageId, "chatMessages"), {
-          system: true,
-          text: `${user.username} added ${memberName} to the group`,
-          createdAt: serverTimestamp()
-        });
+        await addDoc(
+          collection(db, "messages", activeGroup.messageId, "chatMessages"),
+          {
+            system: true,
+            text: `${user.username} added ${memberName} to the group`,
+            createdAt: serverTimestamp(),
+          }
+        );
 
         // Add group to new member's chat list
         await this.updateUserChatList(memberId, {
@@ -899,7 +980,7 @@ export class LeftSidebar extends Component {
           members: updatedMembers,
           lastMessage: `${user.username} added you to the group`,
           updatedAt: Date.now(),
-          messageSeen: false
+          messageSeen: false,
         });
       }
 
@@ -912,18 +993,20 @@ export class LeftSidebar extends Component {
           const userChatData = userSnap.data();
           const chatDataClone = [...userChatData.chatData];
 
-          const chatIndex = chatDataClone.findIndex(c => c.messageId === activeGroup.messageId);
+          const chatIndex = chatDataClone.findIndex(
+            (c) => c.messageId === activeGroup.messageId
+          );
           if (chatIndex !== -1) {
             chatDataClone[chatIndex] = {
               ...chatDataClone[chatIndex],
               members: updatedMembers,
               lastMessage: `${user.username} added ${selectedMembers.length} members to the group`,
               updatedAt: Date.now(),
-              messageSeen: id === user.id
+              messageSeen: id === user.id,
             };
 
             await updateDoc(userChatRef, {
-              chatData: chatDataClone
+              chatData: chatDataClone,
             });
           }
         }
@@ -932,26 +1015,23 @@ export class LeftSidebar extends Component {
       toast.dismiss(loadingToast);
       toast.success(`${selectedMembers.length} members added to the group`);
 
-
       this.setState({
         activeGroup: {
           ...this.state.activeGroup,
-          members: updatedMembers
-        }
-      })
+          members: updatedMembers,
+        },
+      });
 
       // Fetch updated members list
       this.fetchGroupMembers(updatedMembers);
 
       // Reset UI state
-      this.setState({ selectedMembers: [] })
-
+      this.setState({ selectedMembers: [] });
     } catch (error) {
       console.error("Error adding members:", error);
       toast.dismiss(loadingToast);
       toast.error("Failed to add members to the group");
     }
-
   }
 
   async toggleAdminStatus(memberId) {
@@ -968,50 +1048,52 @@ export class LeftSidebar extends Component {
           toast.error("Cannot remove the last admin");
           return;
         }
-        updatedAdmins = activeGroup.admins.filter(id => id !== memberId);
+        updatedAdmins = activeGroup.admins.filter((id) => id !== memberId);
       } else {
         updatedAdmins = [...activeGroup.admins, memberId];
       }
 
       // Update the admins list in the group document
       await updateDoc(doc(db, "messages", activeGroup.messageId), {
-        admins: updatedAdmins
+        admins: updatedAdmins,
       });
 
       // Get the member being updated
-      const memberToUpdate = groupMembers.find(m => m.id === memberId);
+      const memberToUpdate = groupMembers.find((m) => m.id === memberId);
       const memberName = memberToUpdate?.username || "Unknown User";
 
       // Add system message about admin status change
-      await addDoc(collection(db, "messages", activeGroup.messageId, "chatMessages"), {
-        system: true,
-        text: isAdmin
-          ? `${memberName} is no longer an admin`
-          : `${memberName} is now an admin`,
-        createdAt: serverTimestamp()
-      });
+      await addDoc(
+        collection(db, "messages", activeGroup.messageId, "chatMessages"),
+        {
+          system: true,
+          text: isAdmin
+            ? `${memberName} is no longer an admin`
+            : `${memberName} is now an admin`,
+          createdAt: serverTimestamp(),
+        }
+      );
 
-      toast.success(isAdmin
-        ? `Removed admin status from ${memberName}`
-        : `${memberName} is now an admin`
+      toast.success(
+        isAdmin
+          ? `Removed admin status from ${memberName}`
+          : `${memberName} is now an admin`
       );
 
       // Update the local state
-      this.setState(prevState => ({
+      this.setState((prevState) => ({
         activeGroup: {
           ...prevState.activeGroup,
-          admins: updatedAdmins
+          admins: updatedAdmins,
         },
-        groupMembers: prevState.groupMembers.map(m =>
+        groupMembers: prevState.groupMembers.map((m) =>
           m.id === memberId ? { ...m, isAdmin: !isAdmin } : m
-        )
+        ),
       }));
-
     } catch (error) {
       // console.error("Error toggling admin status:", error);
       toast.error("Failed to update admin status");
     }
-
   }
 
   render() {
@@ -1032,17 +1114,17 @@ export class LeftSidebar extends Component {
       activeGroup,
       groupMembers,
       isLoadingMembers,
-      groupEditMode
+      groupEditMode,
     } = this.state;
     const { user, chatData, unreadMessages } = chatStore;
     const { formRef, groupEditFormRef, isGroupAdmin } = this;
 
     return (
-      <div className='ls'>
+      <div className="ls">
         {/* Header */}
-        <div className='ls-top'>
+        <div className="ls-top">
           <Button
-            type='primary'
+            type="primary"
             style={{ margin: "10px 10px" }}
             onClick={() => this.setState({ groupModalOpen: true })}
           >
@@ -1057,11 +1139,7 @@ export class LeftSidebar extends Component {
             footer={null}
             width={500}
           >
-            <Form
-              ref={formRef}
-              layout="vertical"
-              onFinish={this.createGroup}
-            >
+            <Form ref={formRef} layout="vertical" onFinish={this.createGroup}>
               {/* Group Image Upload */}
               <Form.Item label="Group Photo" name="groupImage">
                 <Upload
@@ -1079,7 +1157,7 @@ export class LeftSidebar extends Component {
                     <Avatar
                       src={imageUrl}
                       size={100}
-                      style={{ width: '100%', height: '100%' }}
+                      style={{ width: "100%", height: "100%" }}
                     />
                   ) : (
                     <div>
@@ -1094,7 +1172,9 @@ export class LeftSidebar extends Component {
               <Form.Item
                 label="Group Name"
                 name="groupName"
-                rules={[{ required: true, message: 'Please enter a group name' }]}
+                rules={[
+                  { required: true, message: "Please enter a group name" },
+                ]}
               >
                 <Input placeholder="Enter group name" />
               </Form.Item>
@@ -1114,33 +1194,45 @@ export class LeftSidebar extends Component {
               <Form.Item
                 label="Add Members"
                 name="members"
-                rules={[{ required: true, message: 'Please add at least one member' }]}
+                rules={[
+                  { required: true, message: "Please add at least one member" },
+                ]}
               >
                 <Select
                   mode="multiple"
                   placeholder="Search for users to add"
                   value={selectedMembers}
-                  onChange={(value) => this.setState({ selectedMembers: value })}
-                  onSearch={(value) => this.searchUsers(value)}
+                  onChange={(value) =>
+                    this.setState({ selectedMembers: value })
+                  }
+                  onSearch={(value) => this.debouncedSearchUsers(value)}
                   loading={searchingUsers}
                   filterOption={false}
-                  notFoundContent={searchingUsers ? <Spin size="small" /> : "No users found"}
-                  style={{ width: '100%' }}
+                  notFoundContent={
+                    searchingUsers ? <Spin size="small" /> : "No users found"
+                  }
+                  style={{ width: "100%" }}
                   options={userSearchResults}
-                >
-                </Select>
+                ></Select>
               </Form.Item>
 
               {/* Submit and Cancel Buttons */}
               <Form.Item>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                  <Button onClick={this.handleModalClose}>
-                    Cancel
-                  </Button>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: "8px",
+                  }}
+                >
+                  <Button onClick={this.handleModalClose}>Cancel</Button>
                   <Button
                     type="primary"
                     htmlType="submit"
-                    disabled={!formRef?.current?.getFieldValue('groupName') || selectedMembers.length === 0}
+                    disabled={
+                      !formRef?.current?.getFieldValue("groupName") ||
+                      selectedMembers.length === 0
+                    }
                   >
                     Create Group
                   </Button>
@@ -1150,11 +1242,13 @@ export class LeftSidebar extends Component {
           </Modal>
 
           <div className="ls-nav">
-            <img src={assets.logo} alt="" className='logo' />
+            <img src={assets.logo} alt="" className="logo" />
             <div className="menu">
-              <IoMdMenu size={30} className='menu-icon' />
-              <div className='sub-menu'>
-                <Link to="/profile"><p>Edit Profile</p></Link>
+              <IoMdMenu size={30} className="menu-icon" />
+              <div className="sub-menu">
+                <Link to="/profile">
+                  <p>Edit Profile</p>
+                </Link>
                 <hr />
                 <p onClick={() => LogOutUser()}>Log Out</p>
               </div>
@@ -1163,7 +1257,7 @@ export class LeftSidebar extends Component {
           <div className="ls-search">
             <input
               type="text"
-              placeholder='Search by username'
+              placeholder="Search by username"
               onChange={(e) => this.handleSearch(e)}
               value={searchQuery}
             />
@@ -1181,17 +1275,28 @@ export class LeftSidebar extends Component {
           {search && (
             <>
               {searchLoading ? (
-                <div className="search-status"><p>Searching...</p></div>
+                <div className="search-status">
+                  <p>Searching...</p>
+                </div>
               ) : noUserFound ? (
                 <div className="search-status no-results">
                   <p>No user found with username "{searchQuery}"</p>
                 </div>
               ) : searchUser ? (
-                <div className="frinds search-result" onClick={() => this.addChat(searchUser)}>
-                  <img src={searchUser.profilePic || assets.profile_img} alt="" className="object-cover aspect-square w-12 rounded-full" />
-                  <div className='text-sm'>
+                <div
+                  className="frinds search-result"
+                  onClick={() => this.addChat(searchUser)}
+                >
+                  <img
+                    src={searchUser.profilePic || assets.profile_img}
+                    alt=""
+                    className="object-cover aspect-square w-12 rounded-full"
+                  />
+                  <div className="text-sm">
                     <p>{searchUser.username}</p>
-                    <span className='text-xs'>{searchUser.bio || "No bio available"}</span>
+                    <span className="text-xs">
+                      {searchUser.bio || "No bio available"}
+                    </span>
                   </div>
                 </div>
               ) : null}
@@ -1212,8 +1317,14 @@ export class LeftSidebar extends Component {
                       </div>
 
                       {chatDataGroup.map((item, index) => (
-                        <div className="frinds group-chat-item" key={`group-${index}`}>
-                          <div className="chat-content" onClick={() => this.setChat(item)}>
+                        <div
+                          className="frinds group-chat-item"
+                          key={`group-${index}`}
+                        >
+                          <div
+                            className="chat-content"
+                            onClick={() => this.setChat(item)}
+                          >
                             <div className="friend-avatar">
                               <img
                                 src={item.groupImage || assets.logo_icon}
@@ -1225,15 +1336,22 @@ export class LeftSidebar extends Component {
                               <div className="friend-header">
                                 <p>{item.groupName}</p>
                                 <span className="last-time">
-                                  {new Date(item.updatedAt).toLocaleDateString(undefined, {
-                                    day: 'numeric',
-                                    month: 'short'
-                                  })}
+                                  {new Date(item.updatedAt).toLocaleDateString(
+                                    undefined,
+                                    {
+                                      day: "numeric",
+                                      month: "short",
+                                    }
+                                  )}
                                 </span>
                               </div>
                               <div className="friend-message">
-                                <span className="message-preview">{item.lastMessage || "No messages yet"}</span>
-                                {unreadMessages[item.messageId] && <span className="unread-badge">New</span>}
+                                <span className="message-preview">
+                                  {item.lastMessage || "No messages yet"}
+                                </span>
+                                {unreadMessages[item.messageId] && (
+                                  <span className="unread-badge">New</span>
+                                )}
                               </div>
                               <span className="status-text">
                                 {item.members?.length || 0} members
@@ -1263,33 +1381,50 @@ export class LeftSidebar extends Component {
 
                       {/* Map through chatData from MobX store */}
                       {chatData.map((item, index) => (
-                        <div className="frinds" key={`direct-${index}`} onClick={() => this.setChat(item)}>
+                        <div
+                          className="frinds"
+                          key={`direct-${index}`}
+                          onClick={() => this.setChat(item)}
+                        >
                           <div className="friend-avatar">
                             <img
                               src={item.user?.profilePic || assets.profile_img}
                               alt=""
                               className="object-cover"
                             />
-                            <div className={`status-indicator ${item.user?.isOnline ? "online" : "offline"}`}></div>
+                            <div
+                              className={`status-indicator ${
+                                item.user?.isOnline ? "online" : "offline"
+                              }`}
+                            ></div>
                           </div>
                           <div className="friend-info">
                             <div className="friend-header">
                               <p>{item.user?.username || "Unknown User"}</p>
                               <span className="last-time">
-                                {new Date(item.updatedAt).toLocaleDateString(undefined, {
-                                  day: 'numeric',
-                                  month: 'short'
-                                })}
+                                {new Date(item.updatedAt).toLocaleDateString(
+                                  undefined,
+                                  {
+                                    day: "numeric",
+                                    month: "short",
+                                  }
+                                )}
                               </span>
                             </div>
                             <div className="friend-message">
-                              <span className="message-preview">{item.lastMessage || "No messages yet"}</span>
-                              {unreadMessages[item.messageId] && <span className="unread-badge">New</span>}
+                              <span className="message-preview">
+                                {item.lastMessage || "No messages yet"}
+                              </span>
+                              {unreadMessages[item.messageId] && (
+                                <span className="unread-badge">New</span>
+                              )}
                             </div>
                             <span className="status-text">
                               {item.user?.isOnline === true
                                 ? "Online"
-                                : item.user?.lastSeen ? this.formatLastSeen(item.user.lastSeen) : "Offline"}
+                                : item.user?.lastSeen
+                                ? this.formatLastSeen(item.user.lastSeen)
+                                : "Offline"}
                             </span>
                           </div>
                         </div>
@@ -1310,9 +1445,9 @@ export class LeftSidebar extends Component {
         {/* Group Settings Modal */}
         <Modal
           title={
-            <div style={{ display: 'flex', alignItems: 'center' }}>
+            <div style={{ display: "flex", alignItems: "center" }}>
               <SettingOutlined style={{ marginRight: 8 }} />
-              {activeGroup?.groupName || 'Group Settings'}
+              {activeGroup?.groupName || "Group Settings"}
             </div>
           }
           open={groupSettingsVisible}
@@ -1325,7 +1460,7 @@ export class LeftSidebar extends Component {
               groupMembers: [],
               imageUrl: null,
               groupImage: null,
-            })
+            });
             if (groupEditFormRef.current) {
               groupEditFormRef.current.resetFields();
             }
@@ -1362,7 +1497,7 @@ export class LeftSidebar extends Component {
                           <Avatar
                             src={imageUrl || activeGroup.groupImage}
                             size={100}
-                            style={{ width: '100%', height: '100%' }}
+                            style={{ width: "100%", height: "100%" }}
                           />
                         ) : (
                           <div>
@@ -1376,7 +1511,9 @@ export class LeftSidebar extends Component {
                     <Form.Item
                       label="Group Name"
                       name="groupName"
-                      rules={[{ required: true, message: 'Group name is required' }]}
+                      rules={[
+                        { required: true, message: "Group name is required" },
+                      ]}
                     >
                       <Input placeholder="Enter group name" />
                     </Form.Item>
@@ -1395,23 +1532,40 @@ export class LeftSidebar extends Component {
                       <Select
                         mode="multiple"
                         placeholder="Search for users to add"
-                        style={{ width: '100%', marginBottom: 16 }}
+                        style={{ width: "100%", marginBottom: 16 }}
                         value={selectedMembers}
-                        onChange={(value) => this.setState({ selectedMembers: value })}
-                        onSearch={this.searchUsers}
+                        onChange={(value) =>
+                          this.setState({ selectedMembers: value })
+                        }
+                        onSearch={this.debouncedSearchUsers}
                         loading={searchingUsers}
                         filterOption={false}
-                        notFoundContent={searchingUsers ? <Spin size="small" /> : "No users found"}
+                        notFoundContent={
+                          searchingUsers ? (
+                            <Spin size="small" />
+                          ) : (
+                            "No users found"
+                          )
+                        }
                         options={userSearchResults.filter(
-                          user => !activeGroup.members.includes(user.value)
+                          (user) => !activeGroup.members.includes(user.value)
                         )}
                       />
                     </Form.Item>
 
-
                     <Form.Item>
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                        <Button onClick={() => this.setState({ groupEditMode: false })}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "flex-end",
+                          gap: "8px",
+                        }}
+                      >
+                        <Button
+                          onClick={() =>
+                            this.setState({ groupEditMode: false })
+                          }
+                        >
                           Cancel
                         </Button>
                         <Button type="primary" htmlType="submit">
@@ -1434,9 +1588,14 @@ export class LeftSidebar extends Component {
                           {activeGroup.groupDescription || "No description"}
                         </p>
                         <div className="group-meta">
-                          <p>Created {activeGroup.createdAt?.toDate
-                            ? formatDistanceToNow(activeGroup.createdAt.toDate(), { addSuffix: true })
-                            : "recently"}
+                          <p>
+                            Created{" "}
+                            {activeGroup.createdAt?.toDate
+                              ? formatDistanceToNow(
+                                  activeGroup.createdAt.toDate(),
+                                  { addSuffix: true }
+                                )
+                              : "recently"}
                           </p>
                           <p>{activeGroup.members?.length || 0} members</p>
                         </div>
@@ -1461,7 +1620,8 @@ export class LeftSidebar extends Component {
               <Tabs.TabPane
                 tab={
                   <span>
-                    <UserOutlined /> Members ({activeGroup.members?.length || 0})
+                    <UserOutlined /> Members ({activeGroup.members?.length || 0}
+                    )
                   </span>
                 }
                 key="members"
@@ -1481,26 +1641,54 @@ export class LeftSidebar extends Component {
                     </div>
 
                     {addMemberMode && (
-                      <div style={{ backgroundColor: '#f5f5f5', padding: 16, borderRadius: 8, marginBottom: 16 }}>
-                        <h4 style={{ marginTop: 0, marginBottom: 8 }}>Add New Members</h4>
+                      <div
+                        style={{
+                          backgroundColor: "#f5f5f5",
+                          padding: 16,
+                          borderRadius: 8,
+                          marginBottom: 16,
+                        }}
+                      >
+                        <h4 style={{ marginTop: 0, marginBottom: 8 }}>
+                          Add New Members
+                        </h4>
                         <Select
                           mode="multiple"
                           placeholder="Search for users to add"
-                          style={{ width: '100%', marginBottom: 16 }}
+                          style={{ width: "100%", marginBottom: 16 }}
                           value={selectedMembers}
-                          onChange={(value) => this.setState({ selectedMembers: value })}
-                          onSearch={this.searchUsers}
+                          onChange={(value) =>
+                            this.setState({ selectedMembers: value })
+                          }
+                          onSearch={this.debouncedSearchUsers}
                           loading={searchingUsers}
                           filterOption={false}
-                          notFoundContent={searchingUsers ? <Spin size="small" /> : "No users found"}
+                          notFoundContent={
+                            searchingUsers ? (
+                              <Spin size="small" />
+                            ) : (
+                              "No users found"
+                            )
+                          }
                           options={userSearchResults.filter(
-                            user => !activeGroup.members.includes(user.value)
+                            (user) => !activeGroup.members.includes(user.value)
                           )}
                         />
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                          <Button onClick={() => {
-                            this.setState({ addMemberMode: false, selectedMembers: [] });
-                          }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "flex-end",
+                            gap: 8,
+                          }}
+                        >
+                          <Button
+                            onClick={() => {
+                              this.setState({
+                                addMemberMode: false,
+                                selectedMembers: [],
+                              });
+                            }}
+                          >
                             Cancel
                           </Button>
                           <Button
@@ -1518,76 +1706,113 @@ export class LeftSidebar extends Component {
 
                 {/* Members list */}
                 {isLoadingMembers ? (
-                  <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "center",
+                      padding: "20px",
+                    }}
+                  >
                     <Spin />
                   </div>
                 ) : (
                   <List
                     itemLayout="horizontal"
                     dataSource={groupMembers}
-                    renderItem={member => (
+                    renderItem={(member) => (
                       <List.Item
-                        actions={this.isGroupAdmin(activeGroup) ? [
-                          // Only show admin toggle for non-creator members or other admins
-                          (activeGroup.createdBy !== member.id) && (
-                            <Button
-                              size="small"
-                              type={activeGroup.admins?.includes(member.id) ? "default" : "primary"}
-                              onClick={() => this.toggleAdminStatus(member.id)}
-                              disabled={activeGroup.admins?.length === 1 && activeGroup.admins?.includes(member.id)}
-                            >
-                              {activeGroup.admins?.includes(member.id) ? "Remove Admin" : "Make Admin"}
-                            </Button>
-                          ),
-                          // Only show remove button for non-self members
-                          member.id !== user.id && (
-                            <Popconfirm
-                              title="Remove from group?"
-                              description={`Are you sure you want to remove ${member.username || "this user"}?`}
-                              onConfirm={() => this.removeMemberFromGroup(member.id)}
-                              okText="Yes"
-                              cancelText="No"
-                            >
-                              <Button
-                                size="small"
-                                type="text"
-                                danger
-                              >
-                                Remove
-                              </Button>
-                            </Popconfirm>
-                          )
-                        ] : member.id === user.id ? [
-                          // Allow non-admin users to leave the group
-                          <Popconfirm
-                            title="Leave group?"
-                            description="Are you sure you want to leave this group?"
-                            onConfirm={() => this.removeMemberFromGroup(member.id)}
-                            okText="Yes"
-                            cancelText="No"
-                          >
-                            <Button
-                              size="small"
-                              type="text"
-                              danger
-                            >
-                              Leave Group
-                            </Button>
-                          </Popconfirm>
-                        ] : []}
+                        actions={
+                          this.isGroupAdmin(activeGroup)
+                            ? [
+                                // Only show admin toggle for non-creator members or other admins
+                                activeGroup.createdBy !== member.id && (
+                                  <Button
+                                    size="small"
+                                    type={
+                                      activeGroup.admins?.includes(member.id)
+                                        ? "default"
+                                        : "primary"
+                                    }
+                                    onClick={() =>
+                                      this.toggleAdminStatus(member.id)
+                                    }
+                                    disabled={
+                                      activeGroup.admins?.length === 1 &&
+                                      activeGroup.admins?.includes(member.id)
+                                    }
+                                  >
+                                    {activeGroup.admins?.includes(member.id)
+                                      ? "Remove Admin"
+                                      : "Make Admin"}
+                                  </Button>
+                                ),
+                                // Only show remove button for non-self members
+                                member.id !== user.id && (
+                                  <Popconfirm
+                                    title="Remove from group?"
+                                    description={`Are you sure you want to remove ${
+                                      member.username || "this user"
+                                    }?`}
+                                    onConfirm={() =>
+                                      this.removeMemberFromGroup(member.id)
+                                    }
+                                    okText="Yes"
+                                    cancelText="No"
+                                  >
+                                    <Button size="small" type="text" danger>
+                                      Remove
+                                    </Button>
+                                  </Popconfirm>
+                                ),
+                              ]
+                            : member.id === user.id
+                            ? [
+                                // Allow non-admin users to leave the group
+                                <Popconfirm
+                                  title="Leave group?"
+                                  description="Are you sure you want to leave this group?"
+                                  onConfirm={() =>
+                                    this.removeMemberFromGroup(member.id)
+                                  }
+                                  okText="Yes"
+                                  cancelText="No"
+                                >
+                                  <Button size="small" type="text" danger>
+                                    Leave Group
+                                  </Button>
+                                </Popconfirm>,
+                              ]
+                            : []
+                        }
                       >
                         <List.Item.Meta
-                          avatar={<Avatar src={member.profilePic || assets.profile_img} />}
+                          avatar={
+                            <Avatar
+                              src={member.profilePic || assets.profile_img}
+                            />
+                          }
                           title={
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "8px",
+                              }}
+                            >
                               {member.username || "Unknown User"}
-                              {member.id === user.id && <Tag color="blue">You</Tag>}
+                              {member.id === user.id && (
+                                <Tag color="blue">You</Tag>
+                              )}
                               {activeGroup.admins?.includes(member.id) && (
                                 <Tag color="gold">Admin</Tag>
                               )}
                             </div>
                           }
-                          description={member.id === activeGroup.createdBy ? "Group Creator" : "Member"}
+                          description={
+                            member.id === activeGroup.createdBy
+                              ? "Group Creator"
+                              : "Member"
+                          }
                         />
                       </List.Item>
                     )}
@@ -1596,14 +1821,14 @@ export class LeftSidebar extends Component {
               </Tabs.TabPane>
             </Tabs>
           ) : (
-            <div style={{ textAlign: 'center', padding: '20px 0' }}>
+            <div style={{ textAlign: "center", padding: "20px 0" }}>
               <Spin size="large" />
               <p style={{ marginTop: 16 }}>Loading group information...</p>
             </div>
           )}
         </Modal>
       </div>
-    )
+    );
   }
 }
 

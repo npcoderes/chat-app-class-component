@@ -285,7 +285,7 @@ class ChatBox extends Component {
     const { user } = chatStore;
 
     if (!messageId) return;
-
+ 
     try {
       await updateDoc(doc(db, "messages", messageId), {
         [`typing_${user.id}`]: isTyping
@@ -314,7 +314,7 @@ class ChatBox extends Component {
       inputElement.addEventListener('keydown', this.handleKeyPress);
     } else {
       console.log("Input element not found, scheduling retry");
-      setTimeout(this.addEnterKeyListener, 500);
+      // setTimeout(this.addEnterKeyListener, 500);
     }
   }
 
